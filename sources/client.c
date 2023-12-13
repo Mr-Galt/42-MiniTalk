@@ -6,12 +6,24 @@
 /*   By: mheinke <mheinke@student.42abudhabi.ae>    +#+  +:+       +#+        */
 /*                                                +#+#+#+#+#+   +#+           */
 /*   Created: 2023/12/11 20:30:40 by mheinke           #+#    #+#             */
-/*   Updated: 2023/12/12 15:18:28 by mheinke          ###   ########.fr       */
+/*   Updated: 2023/12/13 16:01:34 by mheinke          ###   ########.fr       */
 /*                                                                            */
 /* ************************************************************************** */
 
 #include "../libft/includes/libft.h"
-#include <stdlib.h>
+
+/**
+ * @brief Validates command line arguments for the client program.
+ *
+ * Checks the command line arguments passed to the client for correctness.
+ * It ensures the correct number of arguments, verifies if the server PID
+ * is only digits (and less than 32 digits long), and confirms the message
+ * is not empty. If any condition fails, it prints an error message in
+ * colored and bold text, then exits the program.
+ *
+ * @param argc Number of command line arguments.
+ * @param argv Array of command line argument strings.
+ */
 
 void	args_check(int argc, char **argv)
 {
@@ -27,9 +39,10 @@ void	args_check(int argc, char **argv)
 	}
 	while (argv[1][i])
 	{
-		if (!ft_isdigit(argv[1][i++]))
+		if (!ft_isdigit(argv[1][i++]) || ft_strlen(argv[1]) > 18)
 		{
-			ft_printf("\033[31m\033[1mInvalid PID\n\033[0m");
+			ft_printf("\033[31m\033[1mPID Error\n\033[0m");
+			ft_printf("\033[31m\033[1mJust input a max 18 digits\n\033[0m");
 			exit(1);
 		}
 	}
@@ -41,50 +54,68 @@ void	args_check(int argc, char **argv)
 }
 
 /**
- * @brief Sends a string to another process character by character
- *        using UNIX signals. Each character is sent as a series of bits. 
- *        For each bit, a signal is sent to the process with the given PID.
- *        SIGUSR2 is sent to represent a '1' bit, and SIGUSR1 is sent to 
- *        represent a '0' bit. The function sends 7 bits for each character,
- *		  suitable for 7-bit ASCII encoding.
+ * @brief Confirms the reception of a character from the client.
  *
- * @param pid The Process ID (PID) of the receiving process.
- * @param str The string to be sent. The function sends each character
- *            of this string as a series of bits.
- * @param len The length of the string. This is used to determine when
- *            the entire string has been sent.
+ * This function is a signal handler that prints a confirmation message when
+ * either SIGUSR1 or SIGUSR2 is received. It uses ANSI escape codes to color
+ * the output green. The function handles both signals identically, printing
+ * a message indicating that a character was successfully received.
+ *
+ * @param signal The signal number received (SIGUSR1 or SIGUSR2).
  */
 
-void	send_bit(int pid, char *str, size_t len)
+static void	confirm(int signal)
 {
-	int		shift;
-	size_t	i;
+	if (signal == SIGUSR1)
+		ft_printf("\033[0;32mChar received!\033[0;32m\n", 1);
+	else
+		ft_printf("\033[0;32mChar received!\033[0;32m\n", 1);
+}
 
-	i = 0;
-	while (i <= len)
+/**
+ * @brief Sends a character as a series of bits to the specified PID.
+ *
+ * This function sends each bit of the given character to the process
+ * identified by 'pid', using signals. It iterates through each of the 8 
+ * bits of 'character', sending SIGUSR1 for a '1' bit and SIGUSR2 for a '0' 
+ * bit. The function introduces a brief pause between sending each bit to
+ * ensure the receiving process can handle the incoming signals properly.
+ *
+ * @param pid The process ID to which the signals are sent.
+ * @param character The character to send as a series of bits.
+ */
+
+void	send_bits(int pid, char character)
+{
+	int	bit;
+
+	bit = 0;
+	while (bit < 8)
 	{
-		shift = 0;
-		while (shift < 7)
-		{
-			if ((str[i] >> shift) & 1)
-				kill(pid, SIGUSR2);
-			else
-				kill(pid, SIGUSR1);
-			shift++;
-			usleep(690);
-		}
-		i++;
+		if ((character & (0x01 << bit)) != 0)
+			kill(pid, SIGUSR1);
+		else
+			kill(pid, SIGUSR2);
+		usleep(500);
+		bit++;
 	}
 }
 
 int	main(int argc, char **argv)
 {
 	int		pid;
-	char	*str;
+	int		i;
 
+	i = 0;
 	args_check(argc, argv);
 	pid = ft_atoi(argv[1]);
-	str = argv[2];
-	send_bit(pid, str, ft_strlen(str));
+	while (argv[2][i] != '\0')
+	{
+		signal(SIGUSR1, confirm);
+		signal(SIGUSR2, confirm);
+		send_bits(pid, argv[2][i]);
+		i++;
+	}
+	send_bits(pid, '\n');
 	usleep(500);
 }
